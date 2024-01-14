@@ -1,2 +1,2 @@
 # AppPrograming
-A public Repository for my Mobile &amp; Wireless Appliances class
+This repo is for ist 236 spring 2024
