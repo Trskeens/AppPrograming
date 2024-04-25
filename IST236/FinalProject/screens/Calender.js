@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import axios from 'axios';
+import { LogBox } from 'react-native';
+
+LogBox.ignoreLogs(['Warning: Encountered two children with the same key']);
 
 const CalendarScreen = () => {
   const [markedDates, setMarkedDates] = useState({});
   const [selectedDayProjects, setSelectedDayProjects] = useState([]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const projectsResult = await axios.get(
         'https://firestore.googleapis.com/v1/projects/lira-b88da/databases/(default)/documents/Projects'
@@ -20,15 +24,17 @@ const CalendarScreen = () => {
   
       if (projectsResult.data.documents) {
         projectsResult.data.documents.forEach(doc => {
+          if (doc.fields['isComplete'] && doc.fields['isComplete'].booleanValue) {
+            return; // Skip this iteration if the project is complete
+          }
           if (doc.fields['Due Date'] && doc.fields['Due Date'].timestampValue && doc.fields['Name'] && doc.fields['Name'].stringValue) {
             const date = new Date(doc.fields['Due Date'].timestampValue).toISOString().split('T')[0];
-            console.log('Project Due Date:', date);
             newMarkedDates[date] = { 
               dots: [{ 
                 key: 'project', 
                 color: 'red', 
-                name: doc.fields['Name'].stringValue,
-                description: doc.fields['Description'].stringValue,
+                name: doc.fields['Name']?.stringValue,
+                description: doc.fields['Description']?.stringValue,
                 startDate: new Date(doc.fields['Start Date'].timestampValue).toISOString().split('T')[0],
                 dueDate: date
               }] 
@@ -39,29 +45,31 @@ const CalendarScreen = () => {
       
       if (tasksResult.data.documents) {
         tasksResult.data.documents.forEach(doc => {
+          if (doc.fields['isComplete'] && doc.fields['isComplete'].booleanValue) {
+            return; // Skip this iteration if the task is complete
+          }
           if (doc.fields['Due Date'] && doc.fields['Due Date'].timestampValue && doc.fields['Task Name'] && doc.fields['Task Name'].stringValue) {
             const date = new Date(doc.fields['Due Date'].timestampValue).toISOString().split('T')[0];
-            console.log('Task Due Date:', date);
             if (newMarkedDates[date]) {
               newMarkedDates[date].dots.push({ 
                 key: 'task', 
                 color: 'blue', 
-                name: doc.fields['Task Name'].stringValue,
-                description: doc.fields['Description'].stringValue,
+                name: doc.fields['Task Name']?.stringValue,
+                description: doc.fields['Description']?.stringValue,
                 dueDate: date,
-                priority: doc.fields['Priority'].stringValue,
-                projectId: doc.fields['ProjectsID'].stringValue
+                priority: doc.fields['Priority']?.stringValue,
+                projectName: doc.fields['Project Name']?.stringValue
               });
             } else {
               newMarkedDates[date] = { 
                 dots: [{ 
                   key: 'task', 
                   color: 'blue', 
-                  name: doc.fields['Task Name'].stringValue,
-                  description: doc.fields['Description'].stringValue,
+                  name: doc.fields['Task Name']?.stringValue,
+                  description: doc.fields['Description']?.stringValue,
                   dueDate: date,
-                  priority: doc.fields['Priority'].stringValue,
-                  projectId: doc.fields['ProjectsID'].stringValue
+                  priority: doc.fields['Priority']?.stringValue,
+                  projectName: doc.fields['Project Name']?.stringValue
                 }] 
               };
             }
@@ -73,7 +81,15 @@ const CalendarScreen = () => {
     } catch (error) {
       console.error('Error fetching data from Firestore:', error);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchData();
+      return () => {}; 
+    }, [fetchData])
+  );
+
 
 const onDayPress = (day) => {
   const date = day.dateString;
@@ -86,7 +102,7 @@ const onDayPress = (day) => {
       dueDate: dot.dueDate,
       startDate: dot.startDate,
       priority: dot.priority,
-      projectId: dot.projectId
+      projectName: dot.projectName
     })));
   } else {
     setSelectedDayProjects([]);
@@ -99,7 +115,7 @@ const onDayPress = (day) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Calendar Screen</Text>
+      <Text style={styles.title}>Calendar</Text>
       <View style={styles.keyContainer}>
         <View style={styles.keyItem}>
           <View style={[styles.dot, { backgroundColor: 'red' }]} />
@@ -115,25 +131,34 @@ const onDayPress = (day) => {
         markingType={'multi-dot'} 
         onDayPress={onDayPress} 
       />
-      <View style={styles.selectedDayProjectsContainer}>
-        {selectedDayProjects.map((projectOrTask, index) => (
+      <ScrollView>
+        <View style={styles.selectedDayProjectsContainer}>
+          {selectedDayProjects.map((projectOrTask, index) => (
             <View key={index} style={styles.infoContainer}>
-            <Text style={{color: projectOrTask.color}}>{projectOrTask.name}</Text>
-            <Text>Description: {projectOrTask.description}</Text>
-            <Text>Due Date: {new Date(projectOrTask.dueDate).toLocaleString()}</Text>
-            {projectOrTask.key === 'project' ? (
-                <Text>Start Date: {new Date(projectOrTask.startDate).toLocaleString()}</Text>
-            ) : (
+              <Text style={[styles.infoText, {color: projectOrTask.color}]}>{projectOrTask.name}</Text>
+              <Text style={styles.infoText}>Description: {projectOrTask.description}</Text>
+              <Text style={styles.infoText}>Due Date: {new Date(projectOrTask.dueDate).toLocaleString()}</Text>
+              {projectOrTask.key === 'project' ? (
+                <Text style={styles.infoText}>Start Date: {new Date(projectOrTask.startDate).toLocaleString()}</Text>
+              ) : (
                 <>
-                <Text>Priority: {projectOrTask.priority}</Text>
-                <Text>Project ID: {projectOrTask.projectId}</Text>
+                  <Text style={styles.infoText}>Priority: {projectOrTask.priority}</Text>
+                  <Text style={styles.infoText}>Project Name: {projectOrTask.projectName}</Text>
                 </>
-            )}
+              )}
             </View>
-        ))}
+          ))}
         </View>
+      </ScrollView>
     </View>
   );
+};
+console.error = (error) => {
+  if (error.includes('Warning: Encountered two children with the same key')) {
+    return;
+  }
+  const originalConsoleError = console._errorOriginal || console.error;
+  originalConsoleError(error);
 };
 
 const styles = StyleSheet.create({
@@ -182,9 +207,17 @@ const styles = StyleSheet.create({
   infoContainer: {
     borderWidth: 1,
     borderColor: '#000',
+    backgroundColor: '#4e4949',
     padding: 10,
     marginBottom: 10,
     borderRadius: 5,
+  },
+  infoText: {
+    fontFamily: 'nolluqa',
+    fontSize:20, 
+    lineHeight: 15, 
+    marginBottom: 8, 
+    color: 'white',
   },
 });
 
