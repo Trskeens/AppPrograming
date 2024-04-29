@@ -11,6 +11,22 @@ const CalendarScreen = () => {
   const [markedDates, setMarkedDates] = useState({});
   const [selectedDayProjects, setSelectedDayProjects] = useState([]);
 
+  const convertToLocalDate = (timestamp) => {
+    const date = new Date(timestamp);
+    const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+    const localDate = new Date(date.getTime() - userTimezoneOffset);
+    // Normalize the date to the start of the day
+    localDate.setHours(0, 0, 0, 0);
+    return localDate.toISOString().split('T')[0];
+  }
+
+  const formatDateDisplay = (dateString) => {
+    const dateParts = dateString.split('-');
+    const displayDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    return displayDate.toDateString(); // Converts to a more readable format without considering time
+  }
+  
+  
   const fetchData = useCallback(async () => {
     try {
       const projectsResult = await axios.get(
@@ -25,52 +41,52 @@ const CalendarScreen = () => {
       if (projectsResult.data.documents) {
         projectsResult.data.documents.forEach(doc => {
           if (doc.fields['isComplete'] && doc.fields['isComplete'].booleanValue) {
-            return; // Skip this iteration if the project is complete
+            return;
           }
           if (doc.fields['Due Date'] && doc.fields['Due Date'].timestampValue && doc.fields['Name'] && doc.fields['Name'].stringValue) {
-            const date = new Date(doc.fields['Due Date'].timestampValue).toISOString().split('T')[0];
-            newMarkedDates[date] = { 
-              dots: [{ 
-                key: 'project', 
-                color: 'red', 
-                name: doc.fields['Name']?.stringValue,
-                description: doc.fields['Description']?.stringValue,
-                startDate: new Date(doc.fields['Start Date'].timestampValue).toISOString().split('T')[0],
+            const date = convertToLocalDate(doc.fields['Due Date'].timestampValue);
+            newMarkedDates[date] = {
+              dots: [{
+                key: 'project',
+                color: 'red',
+                name: doc.fields['Name'].stringValue,
+                description: doc.fields['Description'].stringValue,
+                startDate: convertToLocalDate(doc.fields['Start Date'].timestampValue),
                 dueDate: date
-              }] 
+              }]
             };
           }
         });
       }
-      
+  
       if (tasksResult.data.documents) {
         tasksResult.data.documents.forEach(doc => {
           if (doc.fields['isComplete'] && doc.fields['isComplete'].booleanValue) {
-            return; // Skip this iteration if the task is complete
+            return;
           }
           if (doc.fields['Due Date'] && doc.fields['Due Date'].timestampValue && doc.fields['Task Name'] && doc.fields['Task Name'].stringValue) {
-            const date = new Date(doc.fields['Due Date'].timestampValue).toISOString().split('T')[0];
+            const date = convertToLocalDate(doc.fields['Due Date'].timestampValue);
             if (newMarkedDates[date]) {
-              newMarkedDates[date].dots.push({ 
-                key: 'task', 
-                color: 'blue', 
-                name: doc.fields['Task Name']?.stringValue,
-                description: doc.fields['Description']?.stringValue,
+              newMarkedDates[date].dots.push({
+                key: 'task',
+                color: 'blue',
+                name: doc.fields['Task Name'].stringValue,
+                description: doc.fields['Description'].stringValue,
                 dueDate: date,
-                priority: doc.fields['Priority']?.stringValue,
-                projectName: doc.fields['Project Name']?.stringValue
+                priority: doc.fields['Priority'].stringValue,
+                projectName: doc.fields['Project Name'].stringValue
               });
             } else {
-              newMarkedDates[date] = { 
-                dots: [{ 
-                  key: 'task', 
-                  color: 'blue', 
-                  name: doc.fields['Task Name']?.stringValue,
-                  description: doc.fields['Description']?.stringValue,
+              newMarkedDates[date] = {
+                dots: [{
+                  key: 'task',
+                  color: 'blue',
+                  name: doc.fields['Task Name'].stringValue,
+                  description: doc.fields['Description'].stringValue,
                   dueDate: date,
-                  priority: doc.fields['Priority']?.stringValue,
-                  projectName: doc.fields['Project Name']?.stringValue
-                }] 
+                  priority: doc.fields['Priority'].stringValue,
+                  projectName: doc.fields['Project Name'].stringValue
+                }]
               };
             }
           }
@@ -82,6 +98,7 @@ const CalendarScreen = () => {
       console.error('Error fetching data from Firestore:', error);
     }
   }, []);
+  
 
   useFocusEffect(
     React.useCallback(() => {
@@ -137,15 +154,16 @@ const onDayPress = (day) => {
             <View key={index} style={styles.infoContainer}>
               <Text style={[styles.infoText, {color: projectOrTask.color}]}>{projectOrTask.name}</Text>
               <Text style={styles.infoText}>Description: {projectOrTask.description}</Text>
-              <Text style={styles.infoText}>Due Date: {new Date(projectOrTask.dueDate).toLocaleString()}</Text>
+              <Text style={styles.infoText}>Due Date: {formatDateDisplay(projectOrTask.dueDate)}</Text>
               {projectOrTask.key === 'project' ? (
-                <Text style={styles.infoText}>Start Date: {new Date(projectOrTask.startDate).toLocaleString()}</Text>
+                <Text style={styles.infoText}>Start Date: {formatDateDisplay(projectOrTask.startDate)}</Text>
               ) : (
                 <>
                   <Text style={styles.infoText}>Priority: {projectOrTask.priority}</Text>
                   <Text style={styles.infoText}>Project Name: {projectOrTask.projectName}</Text>
                 </>
               )}
+
             </View>
           ))}
         </View>
